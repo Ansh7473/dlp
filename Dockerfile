@@ -2,9 +2,9 @@
 FROM python:3.11-slim
 WORKDIR /app
 
-# Install ffmpeg, ffprobe, and system utilities
+# Install ffmpeg, ffprobe, nodejs (JS runtime for yt-dlp ciphers), and system utilities
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ffmpeg curl && \
+    apt-get install -y --no-install-recommends ffmpeg curl nodejs && \
     rm -rf /var/lib/apt/lists/*
 
 # Install FastAPI backend requirements
