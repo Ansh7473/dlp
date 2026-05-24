@@ -105,20 +105,6 @@ def get_ffmpeg_status() -> bool:
 
     return False
 
-# Helper to automatically apply cookies.txt if present
-def apply_cookies_setting(ydl_opts: dict):
-    # Check both root and backend directory for cookies.txt
-    app_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-    cookies_candidates = [
-        os.path.join(app_root, "cookies.txt"),
-        os.path.join(os.path.dirname(__file__), "cookies.txt")
-    ]
-    for candidate in cookies_candidates:
-        if os.path.exists(candidate):
-            logger.info(f"Loading cookies from: {candidate}")
-            ydl_opts["cookiefile"] = candidate
-            return True
-    return False
 
 # Broadcast updates to all connected WebSockets
 async def broadcast_task_update(task_id: str, data: dict):
@@ -255,7 +241,6 @@ def run_download_thread(task_id: str, req: DownloadRequest, loop: asyncio.Abstra
         "logger": YtdlLogger(task_id, loop),
         "overwrites": True,
     }
-    apply_cookies_setting(ydl_opts)
 
     # Set format settings
     if req.audio_only:
@@ -408,7 +393,7 @@ def get_video_info(url: str):
         "no_warnings": True,
         "extract_flat": "in_playlist",
     }
-    apply_cookies_setting(ydl_opts)
+
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
