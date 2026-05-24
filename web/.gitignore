@@ -2,7 +2,7 @@
 node_modules/
 
 # Production builds
-# dist/ is tracked to avoid building on low-spec VPS
+dist/
 
 
 # Download staging

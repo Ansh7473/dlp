@@ -133,6 +133,3 @@ yt-dlp-plugins
 # Packages
 yt_dlp_ejs/
 
-# Allow tracking web/dist for low-spec VPS deployment
-!web/dist/
-

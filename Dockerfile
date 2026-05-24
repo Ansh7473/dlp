@@ -1,4 +1,12 @@
-# Use a lightweight Python base image
+# Stage 1: Build the React frontend
+FROM node:20-slim AS frontend-builder
+WORKDIR /app
+COPY web/package*.json ./
+RUN npm install
+COPY web/ ./
+RUN npm run build
+
+# Stage 2: Create the Python production runtime
 FROM python:3.11-slim
 WORKDIR /app
 
@@ -23,8 +31,8 @@ COPY web/backend/ ./web/backend/
 # Copy cookies.txt if present in the repository
 COPY cookies.txt* ./
 
-# Copy pre-built frontend assets directly from the repository
-COPY web/dist/ ./web/dist/
+# Copy built frontend assets from Stage 1 into the location expected by main.py
+COPY --from=frontend-builder /app/dist/ ./web/dist/
 
 # Set env settings
 ENV PYTHONUNBUFFERED=1
