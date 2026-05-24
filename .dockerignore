@@ -9,7 +9,6 @@
 **/*.pyd
 .DS_Store
 web/node_modules/
-web/dist/
 web/downloads/
 web/backend/.venv/
 web/backend/__pycache__/
