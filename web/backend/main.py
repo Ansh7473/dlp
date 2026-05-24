@@ -24,6 +24,8 @@ logger = logging.getLogger("yt-dlp-web")
 
 app = FastAPI(title="yt-dlp Web Control Panel API")
 
+DEFAULT_PROXY = "https://cloudflare-relay.ansh32881.workers.dev"
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
@@ -328,6 +330,8 @@ def run_download_thread(task_id: str, req: DownloadRequest, loop: asyncio.Abstra
     # Proxy settings
     if req.proxy and req.proxy.strip():
         ydl_opts["proxy"] = req.proxy.strip()
+    else:
+        ydl_opts["proxy"] = DEFAULT_PROXY
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -409,6 +413,7 @@ def get_video_info(url: str):
         "extract_flat": "in_playlist",
     }
     apply_cookies_setting(ydl_opts)
+    ydl_opts["proxy"] = DEFAULT_PROXY
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
