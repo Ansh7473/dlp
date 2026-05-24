@@ -20,6 +20,9 @@ COPY yt_dlp/ ./yt_dlp/
 # Copy the backend source files
 COPY web/backend/ ./web/backend/
 
+# Copy cookies.txt if present in the repository
+COPY cookies.txt* ./
+
 # Copy pre-built frontend assets directly from the repository
 COPY web/dist/ ./web/dist/
 
