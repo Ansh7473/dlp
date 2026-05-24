@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+
+# Production builds
+dist/
+
+# Download staging
+downloads/
+
+# Backend virtual environments
+backend/.venv/
+backend/__pycache__/
+backend/*.pyc
+
+# Local config
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
