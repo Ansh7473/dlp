@@ -1,5 +1,22 @@
-import os
 import sys
+
+# In PyInstaller --noconsole mode on Windows, sys.stdout and sys.stderr are None.
+# This causes uvicorn's ColourizedFormatter to fail when checking sys.stdout.isatty().
+# We mock these streams with a dummy class that supports isatty() and standard write/flush operations.
+if sys.stdout is None or sys.stderr is None:
+    class DummyStream:
+        def write(self, data):
+            pass
+        def flush(self):
+            pass
+        def isatty(self):
+            return False
+    if sys.stdout is None:
+        sys.stdout = DummyStream()
+    if sys.stderr is None:
+        sys.stderr = DummyStream()
+
+import os
 import uuid
 import shutil
 import asyncio
