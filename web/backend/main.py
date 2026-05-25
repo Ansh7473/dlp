@@ -1,22 +1,39 @@
 import sys
-
-# In PyInstaller --noconsole mode on Windows, sys.stdout and sys.stderr are None.
-# This causes uvicorn's ColourizedFormatter to fail when checking sys.stdout.isatty().
-# We mock these streams with a dummy class that supports isatty() and standard write/flush operations.
-if sys.stdout is None or sys.stderr is None:
-    class DummyStream:
-        def write(self, data):
-            pass
-        def flush(self):
-            pass
-        def isatty(self):
-            return False
-    if sys.stdout is None:
-        sys.stdout = DummyStream()
-    if sys.stderr is None:
-        sys.stderr = DummyStream()
-
 import os
+
+# Add global exception hook to catch any crash in noconsole mode
+def excepthook(type, value, traceback):
+    import traceback as tb
+    try:
+        base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(__file__)
+        log_path = os.path.join(base_dir, "crash_log.txt")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write("=== UNHANDLED EXCEPTION ===\n")
+            tb.print_exception(type, value, traceback, file=f)
+            f.write("\n")
+    except Exception:
+        pass
+sys.excepthook = excepthook
+
+# In PyInstaller --noconsole mode on Windows, standard streams are None.
+# This causes uvicorn's ColourizedFormatter and other loggers to fail.
+# We mock these streams with a dummy class that supports isatty() and standard operations.
+class DummyStream:
+    def write(self, data): pass
+    def writelines(self, lines): pass
+    def flush(self): pass
+    def isatty(self): return False
+    def read(self, *args, **kwargs): return ""
+    def readline(self, *args, **kwargs): return ""
+    def readlines(self, *args, **kwargs): return []
+
+if sys.stdout is None: sys.stdout = DummyStream()
+if sys.stderr is None: sys.stderr = DummyStream()
+if sys.stdin is None: sys.stdin = DummyStream()
+if getattr(sys, "__stdout__", None) is None: sys.__stdout__ = DummyStream()
+if getattr(sys, "__stderr__", None) is None: sys.__stderr__ = DummyStream()
+if getattr(sys, "__stdin__", None) is None: sys.__stdin__ = DummyStream()
+
 import uuid
 import shutil
 import asyncio
@@ -696,8 +713,14 @@ def kill_process_on_port(port: int):
     
     current_pid = os.getpid()
     try:
-        # Run netstat to find all TCP connections
-        output = subprocess.check_output("netstat -ano -p tcp", shell=True).decode('utf-8', errors='ignore')
+        # Run netstat safely with redirects to prevent hangs in noconsole mode
+        output = subprocess.check_output(
+            "netstat -ano -p tcp",
+            shell=True,
+            stdin=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5
+        ).decode('utf-8', errors='ignore')
         
         pids_to_kill = set()
         for line in output.splitlines():
@@ -715,7 +738,14 @@ def kill_process_on_port(port: int):
                         pass
         
         for pid in pids_to_kill:
-            subprocess.run(f"taskkill /F /PID {pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(
+                f"taskkill /F /PID {pid}",
+                shell=True,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=5
+            )
             time.sleep(0.5)
     except Exception:
         pass
@@ -726,12 +756,27 @@ if __name__ == "__main__":
     import threading
     import time
 
-    # Auto-kill any existing process holding port 8000
-    kill_process_on_port(8000)
+    try:
+        # Auto-kill any existing process holding port 8000
+        kill_process_on_port(8000)
 
-    def open_browser():
-        time.sleep(1.0)
-        webbrowser.open("http://127.0.0.1:8000/")
+        def open_browser():
+            try:
+                time.sleep(1.0)
+                webbrowser.open("http://127.0.0.1:8000/")
+            except Exception as e:
+                base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(__file__)
+                log_path = os.path.join(base_dir, "crash_log.txt")
+                with open(log_path, "a", encoding="utf-8") as f:
+                    f.write(f"=== BROWSER ERROR: {e} ===\n")
 
-    threading.Thread(target=open_browser, daemon=True).start()
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
+        threading.Thread(target=open_browser, daemon=True).start()
+        uvicorn.run(app, host="127.0.0.1", port=8000, log_config=None)
+    except Exception as e:
+        import traceback as tb
+        base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.path.dirname(__file__)
+        log_path = os.path.join(base_dir, "crash_log.txt")
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write("=== MAIN RUNTIME CRASH ===\n")
+            tb.print_exc(file=f)
+            f.write("\n")
