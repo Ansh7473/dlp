@@ -13,10 +13,25 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 # Add parent directory to path to import native yt_dlp module
-PARENT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-sys.path.append(PARENT_DIR)
+if getattr(sys, "frozen", False):
+    pass
+else:
+    PARENT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    sys.path.append(PARENT_DIR)
 
 import yt_dlp
+
+def get_cookies_path() -> str:
+    if getattr(sys, "frozen", False):
+        base_dir = os.path.dirname(sys.executable)
+    else:
+        base_dir = os.path.dirname(__file__)
+    return os.path.abspath(os.path.join(base_dir, "cookies.txt"))
+
+def get_static_dir() -> str:
+    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
+        return os.path.join(sys._MEIPASS, "dist")
+    return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "dist"))
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -312,7 +327,7 @@ def run_download_thread(task_id: str, req: DownloadRequest, loop: asyncio.Abstra
     # Browser cookies extraction
     if req.cookies_from_browser and req.cookies_from_browser != "none":
         if req.cookies_from_browser == "cookies.txt":
-            cookies_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "cookies.txt"))
+            cookies_file = get_cookies_path()
             if os.path.exists(cookies_file):
                 ydl_opts["cookiefile"] = cookies_file
         else:
@@ -385,7 +400,7 @@ def run_download_thread(task_id: str, req: DownloadRequest, loop: asyncio.Abstra
 
 @app.get("/api/status")
 def get_system_status():
-    cookies_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "cookies.txt"))
+    cookies_file = get_cookies_path()
     cookies_configured = os.path.exists(cookies_file) and os.path.getsize(cookies_file) > 0
     return {
         "ffmpeg_installed": get_ffmpeg_status(),
@@ -404,7 +419,7 @@ def save_cookies(req: CookiesRequest):
     if not (clean_text.startswith("# HTTP Cookie File") or clean_text.startswith("# Netscape HTTP Cookie File")):
         raise HTTPException(status_code=400, detail="Invalid format. Cookie file must start with '# HTTP Cookie File' or '# Netscape HTTP Cookie File'")
         
-    cookies_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "cookies.txt"))
+    cookies_file = get_cookies_path()
     try:
         content = req.text.replace("\r\n", "\n").replace("\n", os.linesep)
         with open(cookies_file, "w", encoding="utf-8") as f:
@@ -426,7 +441,7 @@ def get_video_info(url: str, cookies_from_browser: Optional[str] = None, proxy: 
 
     if cookies_from_browser and cookies_from_browser != "none":
         if cookies_from_browser == "cookies.txt":
-            cookies_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "cookies.txt"))
+            cookies_file = get_cookies_path()
             if os.path.exists(cookies_file):
                 ydl_opts["cookiefile"] = cookies_file
         else:
@@ -648,10 +663,23 @@ async def websocket_endpoint(websocket: WebSocket):
         logger.error(f"WebSocket error: {str(e)}")
 
 # Mount static files for Hono frontend build in production
-FRONTEND_DIST_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "dist"))
+FRONTEND_DIST_DIR = get_static_dir()
 if os.path.exists(FRONTEND_DIST_DIR):
     app.mount("/", StaticFiles(directory=FRONTEND_DIST_DIR, html=True), name="frontend")
 else:
     @app.get("/")
     def read_root():
         return {"message": "FastAPI is running. Frontend static files have not been built yet."}
+
+if __name__ == "__main__":
+    import uvicorn
+    import webbrowser
+    import threading
+    import time
+
+    def open_browser():
+        time.sleep(1.0)
+        webbrowser.open("http://127.0.0.1:8000/")
+
+    threading.Thread(target=open_browser, daemon=True).start()
+    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
