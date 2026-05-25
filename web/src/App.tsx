@@ -135,6 +135,12 @@ export default function App() {
   const [cookiesFromBrowser, setCookiesFromBrowser] = useState('none');
   const [proxy, setProxy] = useState('');
 
+  // Cookies Modal State
+  const [showCookiesModal, setShowCookiesModal] = useState(false);
+  const [rawCookieText, setRawCookieText] = useState('');
+  const [isSavingCookies, setIsSavingCookies] = useState(false);
+  const [cookiesError, setCookiesError] = useState('');
+
   // UI state for task logs
   const [expandedLogs, setExpandedLogs] = useState<Record<string, boolean>>({});
 
@@ -281,7 +287,9 @@ export default function App() {
     setSelectedFormatId('');
 
     try {
-      const res = await fetch(getApiUrl(`/api/info?url=${encodeURIComponent(targetUrl)}`));
+      const cookiesParam = cookiesFromBrowser !== 'none' ? `&cookies_from_browser=${cookiesFromBrowser}` : '';
+      const proxyParam = proxy.trim() ? `&proxy=${encodeURIComponent(proxy.trim())}` : '';
+      const res = await fetch(getApiUrl(`/api/info?url=${encodeURIComponent(targetUrl)}${cookiesParam}${proxyParam}`));
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.detail || "Failed to analyze video info");
@@ -364,6 +372,36 @@ export default function App() {
       await fetch(getApiUrl(`/api/tasks/${taskId}/cancel`), { method: 'POST' });
     } catch (e) {
       console.error("Failed to cancel task", e);
+    }
+  };
+
+  const handleSaveCookies = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!rawCookieText.trim()) return;
+    setIsSavingCookies(true);
+    setCookiesError('');
+
+    try {
+      const res = await fetch(getApiUrl('/api/cookies'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: rawCookieText })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to save cookies');
+      }
+
+      setShowCookiesModal(false);
+      setRawCookieText('');
+      fetchSystemStatus(); // Refresh cookies_configured status
+      setCookiesFromBrowser('cookies.txt'); // Automatically switch to cookies.txt
+      alert('Cookies saved and configured successfully! Switched active cookies to cookies.txt.');
+    } catch (err: any) {
+      setCookiesError(err.message || 'An error occurred');
+    } finally {
+      setIsSavingCookies(false);
     }
   };
 
@@ -568,6 +606,124 @@ export default function App() {
             )}
           </button>
         </form>
+
+        {/* Collapsible Advanced Options Toggle */}
+        <div style={{ marginTop: '0.2rem', borderBottom: showAdvanced ? '1px dashed var(--border-color)' : 'none', paddingBottom: showAdvanced ? '1rem' : '0' }}>
+          <button
+            type="button"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              width: '100%',
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-secondary)',
+              fontSize: '0.88rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              padding: '0.5rem 0',
+              outline: 'none',
+            }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Settings size={15} />
+              Advanced Connection & Extraction Controls (Cookies, Proxy, Speed)
+            </span>
+            {showAdvanced ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+          </button>
+
+          {showAdvanced && (
+            <div className="config-grid animate-fade-in" style={{ marginTop: '0.75rem', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', padding: '1rem', gap: '1rem' }}>
+              {/* Speed limit option */}
+              <div>
+                <label className="form-label">Bandwidth Throttle</label>
+                <select
+                  className="select-control"
+                  value={speedLimit}
+                  onChange={(e) => setSpeedLimit(e.target.value)}
+                >
+                  <option value="none">No Limit (Uncapped)</option>
+                  <option value="500K">500 KB/s</option>
+                  <option value="1M">1 MB/s (Slow)</option>
+                  <option value="5M">5 MB/s (Standard)</option>
+                  <option value="10M">10 MB/s (Fast)</option>
+                </select>
+              </div>
+
+              {/* Cookie source option */}
+              <div>
+                <label className="form-label">Extract Cookies From Browser</label>
+                <select
+                  className="select-control"
+                  value={cookiesFromBrowser}
+                  onChange={(e) => setCookiesFromBrowser(e.target.value)}
+                  title="Helpful for age-restricted videos or videos that require login/bypass bot checks"
+                >
+                  <option value="none">Disabled (No Cookies)</option>
+                  <option value="cookies.txt">cookies.txt (Loaded from backend/cookies.txt)</option>
+                  <option value="chrome">Google Chrome</option>
+                  <option value="firefox">Mozilla Firefox</option>
+                  <option value="edge">Microsoft Edge</option>
+                  <option value="brave">Brave Browser</option>
+                  <option value="opera">Opera</option>
+                </select>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.45rem' }}>
+                  <span style={{ fontSize: '0.74rem', color: systemStatus?.cookies_configured ? 'var(--success)' : 'var(--text-muted)', fontFamily: 'var(--font-family-mono)' }}>
+                    {systemStatus?.cookies_configured ? '● cookies.txt CONFIGURED' : '○ cookies.txt NOT FOUND'}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowCookiesModal(true)}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: 'var(--primary-light)',
+                      fontSize: '0.76rem',
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                      padding: 0,
+                      textDecoration: 'underline',
+                      outline: 'none',
+                    }}
+                  >
+                    Paste cookies.txt content
+                  </button>
+                </div>
+              </div>
+
+              {/* Subtitle track options */}
+              <div>
+                <label className="form-label">Subtitle Track Options</label>
+                <div className="checkbox-group" style={{ padding: '0.45rem 0' }}>
+                  <label className="checkbox-label" style={{ fontSize: '0.82rem' }}>
+                    <input
+                      type="checkbox"
+                      className="checkbox-input"
+                      checked={writeSubs}
+                      onChange={(e) => setWriteSubs(e.target.checked)}
+                    />
+                    Download & Embed Subtitles
+                  </label>
+                </div>
+              </div>
+
+              {/* Custom Proxy Server */}
+              <div>
+                <label className="form-label">Custom Network Proxy</label>
+                <input
+                  type="text"
+                  placeholder="e.g. http://127.0.0.1:8080"
+                  className="select-control"
+                  style={{ padding: '0.52rem 1rem' }}
+                  value={proxy}
+                  onChange={(e) => setProxy(e.target.value)}
+                />
+              </div>
+            </div>
+          )}
+        </div>
 
         {infoError && (
           <div style={{ color: 'var(--error)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem' }}>
@@ -787,102 +943,6 @@ export default function App() {
                       </label>
                     </div>
                   )}
-
-                  {/* Collapsible Advanced Options Toggle */}
-                  <div style={{ marginTop: '1rem', borderTop: '1px dashed var(--border-color)', paddingTop: '1rem', paddingBottom: '0.5rem' }}>
-                    <button
-                      type="button"
-                      onClick={() => setShowAdvanced(!showAdvanced)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        width: '100%',
-                        background: 'transparent',
-                        border: 'none',
-                        color: 'var(--text-secondary)',
-                        fontSize: '0.88rem',
-                        fontWeight: 600,
-                        cursor: 'pointer',
-                        padding: '0.5rem 0',
-                        outline: 'none',
-                      }}
-                    >
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <Settings size={15} />
-                        Advanced Extraction Controls
-                      </span>
-                      {showAdvanced ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-                    </button>
-
-                    {showAdvanced && (
-                      <div className="config-grid animate-fade-in" style={{ marginTop: '0.75rem', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-sm)', padding: '1rem', gap: '1rem' }}>
-                        {/* Speed limit option */}
-                        <div>
-                          <label className="form-label">Bandwidth Throttle</label>
-                          <select
-                            className="select-control"
-                            value={speedLimit}
-                            onChange={(e) => setSpeedLimit(e.target.value)}
-                          >
-                            <option value="none">No Limit (Uncapped)</option>
-                            <option value="500K">500 KB/s</option>
-                            <option value="1M">1 MB/s (Slow)</option>
-                            <option value="5M">5 MB/s (Standard)</option>
-                            <option value="10M">10 MB/s (Fast)</option>
-                          </select>
-                        </div>
-
-                        {/* Cookie source option */}
-                        <div>
-                          <label className="form-label">Extract Cookies From Browser</label>
-                          <select
-                            className="select-control"
-                            value={cookiesFromBrowser}
-                            onChange={(e) => setCookiesFromBrowser(e.target.value)}
-                            title="Helpful for age-restricted videos or videos that require login"
-                          >
-                            <option value="none">Disabled (No Cookies)</option>
-                            <option value="chrome">Google Chrome</option>
-                            <option value="firefox">Mozilla Firefox</option>
-                            <option value="edge">Microsoft Edge</option>
-                            <option value="brave">Brave Browser</option>
-                            <option value="opera">Opera</option>
-                          </select>
-                        </div>
-
-                        {/* Subtitle track options */}
-                        <div>
-                          <label className="form-label">Subtitle Track Options</label>
-                          <div className="checkbox-group" style={{ padding: '0.45rem 0' }}>
-                            <label className="checkbox-label" style={{ fontSize: '0.82rem' }}>
-                              <input
-                                type="checkbox"
-                                className="checkbox-input"
-                                checked={writeSubs}
-                                onChange={(e) => setWriteSubs(e.target.checked)}
-                              />
-                              Download & Embed Subtitles
-                            </label>
-                          </div>
-                        </div>
-
-                        {/* Custom Proxy Server */}
-                        <div>
-                          <label className="form-label">Custom Network Proxy</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. http://127.0.0.1:8080"
-                            className="select-control"
-                            style={{ padding: '0.52rem 1rem' }}
-                            value={proxy}
-                            onChange={(e) => setProxy(e.target.value)}
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
                   {/* Start Download button */}
                   <div style={{ marginTop: '0.5rem' }}>
                     <button 
@@ -1188,6 +1248,123 @@ export default function App() {
           </div>
         </section>
       </div>
+
+      {/* Cookies Configuration Modal */}
+      {showCookiesModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.75)',
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000,
+          animation: 'fadeIn 0.25s ease'
+        }}>
+          <div className="glass-card animate-fade-in" style={{
+            width: '90%',
+            maxWidth: '650px',
+            padding: '2rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1.5rem',
+            border: '1px solid rgba(255, 255, 255, 0.1)',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.9), 0 0 40px rgba(239, 68, 68, 0.1)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-color)', paddingBottom: '1rem' }}>
+              <h3 style={{ fontSize: '1.3rem', fontWeight: 700, background: 'linear-gradient(135deg, #ffffff, #ef4444)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                🔑 Paste cookies.txt File Content
+              </h3>
+              <button 
+                type="button" 
+                onClick={() => setShowCookiesModal(false)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: 'var(--radius-sm)',
+                  color: 'var(--text-secondary)',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer',
+                  fontWeight: 'bold',
+                  fontSize: '1rem',
+                  outline: 'none',
+                  transition: 'all 0.2s'
+                }}
+                onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(239, 68, 68, 0.2)'; e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.4)'; e.currentTarget.style.color = '#fff'; }}
+                onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)'; e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.1)'; e.currentTarget.style.color = 'var(--text-secondary)'; }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', lineHeight: '1.4' }}>
+              Export cookies using a browser extension (like <strong style={{ color: '#fff' }}>Get cookies.txt LOCALLY</strong> or <strong style={{ color: '#fff' }}>cookies.txt</strong>) in Netscape format. Paste the entire content of the file below:
+            </div>
+
+            <form onSubmit={handleSaveCookies} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <textarea
+                placeholder="# Netscape HTTP Cookie File&#10;# This is a generated file! Do not edit.&#10;.youtube.com&#9;TRUE&#9;/&#9;TRUE..."
+                required
+                rows={12}
+                value={rawCookieText}
+                onChange={(e) => setRawCookieText(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: 'rgba(0, 0, 0, 0.4)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '1rem',
+                  color: '#fff',
+                  fontFamily: 'var(--font-family-mono)',
+                  fontSize: '0.82rem',
+                  resize: 'vertical',
+                  outline: 'none',
+                  boxShadow: 'inset 0 2px 8px rgba(0,0,0,0.8)',
+                  lineHeight: '1.5'
+                }}
+              />
+
+              {cookiesError && (
+                <div style={{ color: 'var(--error)', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <AlertTriangle size={15} />
+                  <span>{cookiesError}</span>
+                </div>
+              )}
+
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '0.5rem' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: '0.6rem 1.5rem', fontSize: '0.92rem' }}
+                  onClick={() => {
+                    setShowCookiesModal(false);
+                    setCookiesError('');
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  style={{ padding: '0.6rem 2rem', fontSize: '0.92rem' }}
+                  disabled={isSavingCookies}
+                >
+                  {isSavingCookies ? 'Saving and Syncing...' : 'Save & Configure Cookies'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

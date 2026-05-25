@@ -60,6 +60,9 @@ class DownloadRequest(BaseModel):
     cookies_from_browser: Optional[str] = None
     proxy: Optional[str] = None
 
+class CookiesRequest(BaseModel):
+    text: str
+
 class CancelledError(Exception):
     pass
 
@@ -308,7 +311,12 @@ def run_download_thread(task_id: str, req: DownloadRequest, loop: asyncio.Abstra
 
     # Browser cookies extraction
     if req.cookies_from_browser and req.cookies_from_browser != "none":
-        ydl_opts["cookiesfrombrowser"] = (req.cookies_from_browser,)
+        if req.cookies_from_browser == "cookies.txt":
+            cookies_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "cookies.txt"))
+            if os.path.exists(cookies_file):
+                ydl_opts["cookiefile"] = cookies_file
+        else:
+            ydl_opts["cookiesfrombrowser"] = (req.cookies_from_browser,)
 
     # Proxy settings
     if req.proxy and req.proxy.strip():
@@ -377,14 +385,36 @@ def run_download_thread(task_id: str, req: DownloadRequest, loop: asyncio.Abstra
 
 @app.get("/api/status")
 def get_system_status():
+    cookies_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "cookies.txt"))
+    cookies_configured = os.path.exists(cookies_file) and os.path.getsize(cookies_file) > 0
     return {
         "ffmpeg_installed": get_ffmpeg_status(),
         "downloads_directory": DOWNLOAD_DIR,
-        "platform": sys.platform
+        "platform": sys.platform,
+        "cookies_configured": cookies_configured
     }
 
+@app.post("/api/cookies")
+def save_cookies(req: CookiesRequest):
+    if not req.text.strip():
+        raise HTTPException(status_code=400, detail="Cookie content cannot be empty")
+    
+    # Check for basic Netscape file formats
+    clean_text = req.text.strip()
+    if not (clean_text.startswith("# HTTP Cookie File") or clean_text.startswith("# Netscape HTTP Cookie File")):
+        raise HTTPException(status_code=400, detail="Invalid format. Cookie file must start with '# HTTP Cookie File' or '# Netscape HTTP Cookie File'")
+        
+    cookies_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "cookies.txt"))
+    try:
+        content = req.text.replace("\r\n", "\n").replace("\n", os.linesep)
+        with open(cookies_file, "w", encoding="utf-8") as f:
+            f.write(content)
+        return {"status": "success", "message": "Cookies saved successfully to cookies.txt"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/info")
-def get_video_info(url: str):
+def get_video_info(url: str, cookies_from_browser: Optional[str] = None, proxy: Optional[str] = None):
     if not url:
         raise HTTPException(status_code=400, detail="URL query parameter is required")
         
@@ -394,6 +424,16 @@ def get_video_info(url: str):
         "extract_flat": "in_playlist",
     }
 
+    if cookies_from_browser and cookies_from_browser != "none":
+        if cookies_from_browser == "cookies.txt":
+            cookies_file = os.path.abspath(os.path.join(os.path.dirname(__file__), "cookies.txt"))
+            if os.path.exists(cookies_file):
+                ydl_opts["cookiefile"] = cookies_file
+        else:
+            ydl_opts["cookiesfrombrowser"] = (cookies_from_browser,)
+
+    if proxy and proxy.strip():
+        ydl_opts["proxy"] = proxy.strip()
     
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
