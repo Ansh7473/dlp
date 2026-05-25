@@ -49,6 +49,7 @@ interface SystemStatus {
   ffmpeg_installed: boolean;
   downloads_directory: string;
   platform: string;
+  cookies_configured?: boolean;
 }
 
 interface HistoryItem {
