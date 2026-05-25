@@ -689,11 +689,45 @@ else:
     def read_root():
         return {"message": "FastAPI is running. Frontend static files have not been built yet."}
 
+def kill_process_on_port(port: int):
+    import subprocess
+    import os
+    import time
+    
+    current_pid = os.getpid()
+    try:
+        # Run netstat to find all TCP connections
+        output = subprocess.check_output("netstat -ano -p tcp", shell=True).decode('utf-8', errors='ignore')
+        
+        pids_to_kill = set()
+        for line in output.splitlines():
+            parts = line.strip().split()
+            if len(parts) >= 5:
+                # parts[1] is Local Address, parts[-1] is PID
+                local_addr = parts[1]
+                pid_str = parts[-1]
+                if local_addr.endswith(f":{port}"):
+                    try:
+                        pid = int(pid_str)
+                        if pid != current_pid and pid > 0:
+                            pids_to_kill.add(pid)
+                    except ValueError:
+                        pass
+        
+        for pid in pids_to_kill:
+            subprocess.run(f"taskkill /F /PID {pid}", shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(0.5)
+    except Exception:
+        pass
+
 if __name__ == "__main__":
     import uvicorn
     import webbrowser
     import threading
     import time
+
+    # Auto-kill any existing process holding port 8000
+    kill_process_on_port(8000)
 
     def open_browser():
         time.sleep(1.0)
