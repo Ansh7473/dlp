@@ -16,7 +16,8 @@ from fastapi.staticfiles import StaticFiles
 if getattr(sys, "frozen", False):
     pass
 else:
-    PARENT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+    CURRENT_FILE = os.path.abspath(__file__)
+    PARENT_DIR = os.path.abspath(os.path.join(os.path.dirname(CURRENT_FILE), "..", ".."))
     sys.path.append(PARENT_DIR)
 
 import yt_dlp
